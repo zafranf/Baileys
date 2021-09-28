@@ -4,6 +4,7 @@ import { Boom } from "@hapi/boom"
 import makeWASocket, { WASocket, AuthenticationState, DisconnectReason, AnyMessageContent, BufferJSON, initInMemoryKeyStore, delay } from '../src'
 
 (async () => {
+    let lastJid = null
     let sock: WASocket | undefined = undefined
     // load authentication state from a file
     const loadState = () => {
@@ -57,13 +58,21 @@ import makeWASocket, { WASocket, AuthenticationState, DisconnectReason, AnyMessa
         return sock
     }
 
-    const standBy = async (jid) => {
-        await sock.sendPresenceUpdate('composing', jid)
+    const standBy = async () => {
+        if (lastJid === null) {
+            console.log('initiate for stand by')
+        } else {
+            console.log('update presence to', lastJid)
+            await sock.sendPresenceUpdate('available', lastJid)
+            await delay(3000)
+            await sock.sendPresenceUpdate('unavailable', lastJid)
+            console.log('presence cleared')
+        }
 
         /* repeat */
         setTimeout(async () => {
-            await standBy(jid)
-        }, 15000)
+            await standBy()
+        }, 1000 * 60 * 5)
     }
 
     const sendMessageWTyping = async (msg: AnyMessageContent, jid: string) => {
@@ -78,11 +87,12 @@ import makeWASocket, { WASocket, AuthenticationState, DisconnectReason, AnyMessa
 
         await sock.sendMessage(jid, msg)
 
-        await standBy(jid)
+        // await standBy(jid)
+        lastJid = jid
     }
 
     sock = startSock()
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update
         if (connection === 'close') {
             // reconnect if not logged out
@@ -91,6 +101,8 @@ import makeWASocket, { WASocket, AuthenticationState, DisconnectReason, AnyMessa
             } else {
                 console.log('connection closed')
             }
+        } else if (connection === 'open') {
+            await standBy()
         }
         console.log('connection update', update)
     })
