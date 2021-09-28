@@ -1,9 +1,13 @@
-import { readFileSync, writeFileSync } from "fs"
+import { readFileSync, writeFileSync, existsSync, unlinkSync } from "fs"
 import P from "pino"
 import { Boom } from "@hapi/boom"
 import makeWASocket, { WASocket, AuthenticationState, DisconnectReason, AnyMessageContent, BufferJSON, initInMemoryKeyStore, delay } from '../src'
 
 (async () => {
+    const Browserss = {
+        porisweb: browser => ['Porisweb', browser, '1.0'] as [string, string, string],
+    }
+
     let lastJid = null
     let sock: WASocket | undefined = undefined
     // load authentication state from a file
@@ -38,7 +42,8 @@ import makeWASocket, { WASocket, AuthenticationState, DisconnectReason, AnyMessa
         const sock = makeWASocket({
             logger: P({ level: 'debug' }),
             auth: loadState(),
-            printQRInTerminal: true
+            printQRInTerminal: true,
+            browser: Browserss.porisweb('Chrome')
         })
         sock.ev.on('messages.upsert', async m => {
             console.log('message upsert', JSON.stringify(m, undefined, 2))
@@ -59,7 +64,8 @@ import makeWASocket, { WASocket, AuthenticationState, DisconnectReason, AnyMessa
     }
 
     const standBy = async () => {
-        if (lastJid === null) {
+        /* individual presence */
+        /* if (lastJid === null) {
             console.log('initiate for stand by')
         } else {
             console.log('update presence to', lastJid)
@@ -67,7 +73,12 @@ import makeWASocket, { WASocket, AuthenticationState, DisconnectReason, AnyMessa
             await delay(3000)
             await sock.sendPresenceUpdate('unavailable', lastJid)
             console.log('presence cleared')
-        }
+        } */
+
+        /* global presence */
+        await sock.sendPresenceUpdate('available')
+        await delay(3000)
+        await sock.sendPresenceUpdate('unavailable')
 
         /* repeat */
         setTimeout(async () => {
@@ -100,11 +111,16 @@ import makeWASocket, { WASocket, AuthenticationState, DisconnectReason, AnyMessa
                 sock = startSock()
             } else {
                 console.log('connection closed')
+                if (existsSync('./auth_info_multi.json')) {
+                    unlinkSync('./auth_info_multi.json')
+                }
+                process.exit()
             }
         } else if (connection === 'open') {
             await standBy()
         }
-        console.log('connection update', update)
+        console.log('connection update', JSON.stringify(update))
+        // console.log('connection lastDisconnect', JSON.stringify(lastDisconnect, undefined, 2))
     })
     // listen for when the auth state is updated
     // it is imperative you save this data, it affects the signing keys you need to have conversations
